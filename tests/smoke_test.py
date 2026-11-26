@@ -88,6 +88,17 @@ def main():
     for nome in ("scan.pdf", "scan.png"):
         t = converter(d / nome)
         checks[f"OCR em {nome}"] = "PROCURA" in t and "98.765" in t
+    # filtro de OCR: lixo de captura de tela é rejeitado, texto real é aceito
+    import ocr
+    lixo = "Capes:\n1\nis\nDI Copate\nPoomireressiuion = +\n[or]\ncece)\n[se\nScrrege\n?\n&"
+    checks["OCR lixo rejeitado"] = not ocr.texto_confiavel(lixo)
+    checks["OCR bom aceito"] = ocr.texto_confiavel(converter(d / "scan.png"))
+    # rede de segurança: página com texto faltando é detectada
+    import pymupdf
+    import pdf_avancado
+    pg = pymupdf.open(d / "manual.pdf")[1]
+    checks["cobertura detecta perda"] = pdf_avancado.cobertura(pg, "Configurações de papel") < 0.9
+    checks["texto por colunas completo"] = pdf_avancado.cobertura(pg, pdf_avancado.texto_por_colunas(pg)) >= 0.99
     # rodapé entre colunas não pode apagar a 1ª linha da coluna da direita
     from limpeza import limpar_markdown
     sim = []

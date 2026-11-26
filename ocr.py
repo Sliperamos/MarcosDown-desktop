@@ -86,3 +86,27 @@ def ocr_arquivo_imagem(caminho: str) -> tuple[str, int]:
         t = _ocr_pixmap(pix)
         textos.append(f"[pág. {i + 1}]\n\n{t}" if len(doc) > 1 else t)
     return "\n\n".join(textos).strip(), len(doc)
+
+
+_RE_PALAVRA = re.compile(r"^[A-Za-zÀ-ú]{2,}[.,;:]?$")
+_VOGAIS = set("aeiouáéíóúâêôãõàAEIOUÁÉÍÓÚÂÊÔÃÕÀyY")
+
+
+def texto_confiavel(texto: str) -> bool:
+    """Diz se o OCR parece texto de verdade e não lixo (ex.: captura de tela
+    com letra miúda vira "Poomireressiuion", "Scrrege", linhas de 1 caractere)."""
+    linhas = [l.strip() for l in texto.split("\n") if l.strip()]
+    if not linhas or qtd_letras(texto) < 15:
+        return False
+    curtas = sum(1 for l in linhas if qtd_letras(l) < 4)
+    if curtas / len(linhas) > 0.3:
+        return False
+    tokens = texto.split()
+    boas = 0
+    for t in tokens:
+        if re.fullmatch(r"[\d.,/\-–()%ºª°]+", t):  # números, datas, CPF etc.
+            boas += 1
+        elif _RE_PALAVRA.match(t) and any(c in _VOGAIS for c in t) \
+                and not re.search(r"[bcdfghjklmnpqrstvwxz]{4,}", t.lower()):
+            boas += 1
+    return boas / max(1, len(tokens)) >= 0.7 and boas >= 5

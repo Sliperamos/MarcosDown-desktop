@@ -131,6 +131,8 @@ def _hierarquia(linhas: list[str]) -> list[str]:
                 saida.append(f"# {m.group(1)}. {mt.group(1).strip()}")
                 i = j + 1
                 continue
+        # passo com número grande vira título no PDF ("## 1 Clique em..."): volta a ser texto
+        l = re.sub(r"^#{1,6}\s+(\d{1,2}\s+[A-ZÀ-Ú\[(])", r"\1", l)
         l = re.sub(r"^#{4,6}\s+", "## ", l)
         saida.append(l)
         i += 1
