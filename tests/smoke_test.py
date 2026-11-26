@@ -85,7 +85,7 @@ def main():
     # OCR: PDF escaneado e imagem
     from gerar_pdf_manual import gerar_scans
     gerar_scans(str(d))
-    for nome in ("scan.pdf", "scan.png"):
+    for nome in ("scan.pdf", "scan.png", "scan_lote.pdf"):
         t = converter(d / nome)
         checks[f"OCR em {nome}"] = "PROCURA" in t and "98.765" in t
     # filtro de OCR: lixo de captura de tela é rejeitado, texto real é aceito
@@ -99,6 +99,10 @@ def main():
     pg = pymupdf.open(d / "manual.pdf")[1]
     checks["cobertura detecta perda"] = pdf_avancado.cobertura(pg, "Configurações de papel") < 0.9
     checks["texto por colunas completo"] = pdf_avancado.cobertura(pg, pdf_avancado.texto_por_colunas(pg)) >= 0.99
+    from limpeza import limpar_markdown
+    # tecla <OK> no início da linha continua a frase anterior
+    lj = limpar_markdown("2. Pressione <8>, <9>, <1> e, em seguida, pressione o botão\n<OK>.")
+    checks["junta <OK>"] = "pressione o botão <OK>." in lj
     # rodapé entre colunas não pode apagar a 1ª linha da coluna da direita
     from limpeza import limpar_markdown
     sim = []

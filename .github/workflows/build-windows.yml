@@ -48,7 +48,7 @@ jobs:
         id: ver
         shell: bash
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "v=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT; else echo "v=1.2.1" >> $GITHUB_OUTPUT; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "v=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT; else echo "v=1.2.2" >> $GITHUB_OUTPUT; fi
 
       - name: Criar instalador (Inno Setup)
         shell: pwsh

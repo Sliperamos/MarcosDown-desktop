@@ -18,12 +18,13 @@ RE_PAGINA = re.compile(
     re.IGNORECASE,
 )
 RE_PONTILHADO = re.compile(r"\s*(?:\.\s?){4,}\s*(\d{1,4})\b\s*")
-RE_ESTRUTURA = re.compile(r"^\s*(?:#|\||>|```|[-*+]\s|\d+[.)]\s|!\[|<|---|\*\*\*)")
+RE_BOTAO = r"<(?![A-Z0-9][A-Z0-9 /+.-]*>)"  # "<" que não é tecla tipo <OK>, <Fn>, <ON LINE>
+RE_ESTRUTURA = re.compile(r"^\s*(?:#|\||>|```|[-*+]\s|\d+[.)]\s|!\[|" + RE_BOTAO + r"|---|\*\*\*)")
 RE_MARCADOR = re.compile(r"^\(?\d{1,3}[).]?$|^[•▪■□◎]$")
 RE_TITULO_NEGRITO = re.compile(r"^(#{1,6})\s+\*\*(.+?)\*\*\s*$")
 RE_NUM_PASSO = re.compile(r"^(?:#{1,6}\s*)?(?:\*\*)?\(?\d{1,3}[.)]?(?:\*\*)?$")
 RE_SUBLINHADO = re.compile(r"^\s*<u>(.+?)</u>\s*$")
-RE_NAO_JUNTA = re.compile(r"^\s*(?:#|\||>|```|!\[|<|---|\*\*\*)")
+RE_NAO_JUNTA = re.compile(r"^\s*(?:#|\||>|```|!\[|" + RE_BOTAO + r"|---|\*\*\*)")
 RE_MARCA_PAG = re.compile(r"^\[pág\. \d+\]$")
 RE_SUBPASSO = re.compile(r"^\(?\d{1,3}[.)]")
 FIM_FRASE = tuple(".!?:;")
@@ -169,7 +170,7 @@ def _pontilhados(linhas: list[str]) -> list[str]:
 
 def _comeca_continuacao(t: str) -> bool:
     c = t[:1]
-    return bool(c) and (c.islower() or c in "[(,")
+    return bool(c) and (c.islower() or c in "[(," or bool(re.match(r"<[A-Z0-9][A-Z0-9 /+.-]*>", t)))
 
 
 def _juntar_quebras(linhas: list[str]) -> list[str]:

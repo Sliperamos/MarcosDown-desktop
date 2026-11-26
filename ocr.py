@@ -72,6 +72,47 @@ def ocr_regiao(pagina: "pymupdf.Page", rect: "pymupdf.Rect", dpi: int = 300) -> 
     return _ocr_pixmap(pagina.get_pixmap(dpi=dpi, clip=rect))
 
 
+def para_png(pix: "pymupdf.Pixmap") -> bytes:
+    if pix.alpha or pix.n > 3:
+        pix = pymupdf.Pixmap(pymupdf.csRGB, pix) if pix.n - pix.alpha > 3 else pymupdf.Pixmap(pix, 0)
+    return pix.tobytes("png")
+
+
+def _ocr_png(dados: bytes) -> str:
+    return _ocr_pixmap(pymupdf.Pixmap(dados))
+
+
+def ocr_lote(imagens: list[bytes]) -> list[str]:
+    """OCR de várias imagens em paralelo (um processo por núcleo do processador)."""
+    if not imagens:
+        return []
+    nucleos = max(1, min((os.cpu_count() or 2) - 1, 8))
+    if os.environ.get("MARCOSDOWN_NUCLEOS", "").isdigit():  # para testes
+        nucleos = int(os.environ["MARCOSDOWN_NUCLEOS"])
+    if len(imagens) >= 3 and nucleos > 1:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+
+            with ProcessPoolExecutor(max_workers=nucleos) as ex:
+                return list(ex.map(_ocr_png, imagens, chunksize=1))
+        except Exception:
+            pass  # sem paralelismo disponível: faz um por um
+    return [_ocr_png(b) for b in imagens]
+
+
+def ocr_imagem_embutida(doc, xref: int, pagina, rect) -> str:
+    """OCR de uma imagem dentro do PDF usando a imagem original (bem mais rápido
+    que renderizar a região em alta resolução). Se não der, renderiza a região."""
+    if xref:
+        try:
+            pix = pymupdf.Pixmap(doc, xref)
+            if pix.width >= 80 and pix.height >= 30:
+                return _ocr_pixmap(pix)
+        except Exception:
+            pass
+    return ocr_regiao(pagina, rect, dpi=200)
+
+
 def ocr_arquivo_imagem(caminho: str) -> tuple[str, int]:
     """Retorna (texto, nº de quadros). TIFF com várias páginas é suportado."""
     doc = pymupdf.open(caminho)

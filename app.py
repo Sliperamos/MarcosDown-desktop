@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - sem arrastar e soltar
     DND_OK = False
 
 APP_NAME = "MarcosDown"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 EXTENSOES = {
     ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".json", ".xml",
@@ -529,6 +529,9 @@ def autoteste(saida: str, arquivos: list[str]) -> int:
 
 
 def main():
+    import multiprocessing
+
+    multiprocessing.freeze_support()  # OCR em paralelo no .exe
     if len(sys.argv) > 2 and sys.argv[1] == "--autoteste":
         sys.exit(autoteste(sys.argv[2], sys.argv[3:]))
     root =TkinterDnD.Tk() if DND_OK else tk.Tk()

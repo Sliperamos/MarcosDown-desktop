@@ -109,3 +109,9 @@ def gerar_scans(pasta: str):
     pg = so_imagem.new_page(width=595, height=842)
     pg.insert_image(pg.rect, pixmap=pix)
     so_imagem.save(str(pasta / "scan.pdf"))
+    # 3 páginas escaneadas: força o OCR em paralelo (vários processos)
+    lote = pymupdf.open()
+    for _ in range(3):
+        pg = lote.new_page(width=595, height=842)
+        pg.insert_image(pg.rect, pixmap=pix)
+    lote.save(str(pasta / "scan_lote.pdf"))
