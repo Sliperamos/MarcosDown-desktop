@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - sem arrastar e soltar
     DND_OK = False
 
 APP_NAME = "MarcosDown"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 EXTENSOES = {
     ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".json", ".xml",
@@ -45,9 +45,28 @@ def get_markitdown():
         return _md
 
 
-def converter(caminho: Path) -> str:
-    resultado = get_markitdown().convert(str(caminho))
-    return resultado.text_content or ""
+def converter(caminho: Path, pdf_avancado: bool = True, limpar: bool = True) -> str:
+    """Converte um arquivo. Para PDF usa o leitor avançado (com volta automática
+    para o MarkItDown se falhar) e aplica a limpeza de cabeçalhos/rodapés."""
+    caminho = Path(caminho)
+    eh_pdf = caminho.suffix.lower() == ".pdf"
+    md = None
+    if eh_pdf and pdf_avancado:
+        try:
+            from pdf_avancado import pdf_para_markdown
+
+            md = pdf_para_markdown(str(caminho))
+            if not md.strip():
+                md = None  # PDF escaneado/sem texto: tenta o MarkItDown
+        except Exception:
+            md = None
+    if md is None:
+        md = get_markitdown().convert(str(caminho)).text_content or ""
+    if eh_pdf and limpar:
+        from limpeza import limpar_markdown
+
+        md = limpar_markdown(md)
+    return md
 
 
 def abrir_no_sistema(caminho: Path) -> None:
@@ -70,8 +89,8 @@ class App:
         self.rodando = False
 
         root.title(APP_NAME)
-        root.geometry("1100x680")
-        root.minsize(820, 500)
+        root.geometry("1100x740")
+        root.minsize(820, 600)
         self._icone()
         self._estilo()
         self._montar()
@@ -165,6 +184,15 @@ class App:
         self.nao_salvar = tk.BooleanVar(value=False)
         ttk.Checkbutton(opc, text="Só converter (não salvar arquivo, apenas pré-visualizar)",
                         variable=self.nao_salvar).pack(anchor="w", pady=(4, 0))
+
+        pdf = ttk.LabelFrame(esq, text="PDF", padding=8)
+        pdf.pack(fill="x", pady=(8, 0))
+        self.pdf_avancado = tk.BooleanVar(value=True)
+        ttk.Checkbutton(pdf, text="Leitor avançado (colunas na ordem, títulos e tabelas)",
+                        variable=self.pdf_avancado).pack(anchor="w")
+        self.limpar_pdf = tk.BooleanVar(value=True)
+        ttk.Checkbutton(pdf, text="Limpar texto (rodapés, cabeçalhos, frases quebradas)",
+                        variable=self.limpar_pdf).pack(anchor="w")
 
         acao = ttk.Frame(esq)
         acao.pack(fill="x", pady=(8, 0))
@@ -281,19 +309,22 @@ class App:
                 return
         self.rodando = True
         self.btn_converter.state(["disabled"])
+        self._feitos = 0
         self.progresso.configure(maximum=len(pendentes), value=0)
         trabalho = [(iid, self.itens[iid]["path"]) for iid in pendentes]
         for iid in pendentes:
             self.lista.set(iid, "status", "Na fila")
             self.lista.item(iid, tags=())
-        threading.Thread(target=self._worker, args=(trabalho, destino, self.nao_salvar.get()),
+        opcoes = {"pdf_avancado": self.pdf_avancado.get(), "limpar": self.limpar_pdf.get()}
+        threading.Thread(target=self._worker,
+                         args=(trabalho, destino, self.nao_salvar.get(), opcoes),
                          daemon=True).start()
 
-    def _worker(self, trabalho, destino, nao_salvar):
+    def _worker(self, trabalho, destino, nao_salvar, opcoes):
         for iid, path in trabalho:
             self.fila.put(("inicio", iid, None))
             try:
-                md = converter(path)
+                md = converter(path, **opcoes)
                 saida = None
                 if not nao_salvar:
                     pasta = destino or path.parent
@@ -318,7 +349,8 @@ class App:
                     self.itens[iid].update(md=md, saida=saida, erro=None)
                     self.lista.set(iid, "status", "Concluído")
                     self.lista.item(iid, tags=("ok",))
-                    self.progresso["value"] = self.progresso["value"] + 1
+                    self._feitos += 1
+                    self.progresso.configure(value=self._feitos)
                     if not self.lista.selection():
                         self.lista.selection_set(iid)
                     elif iid in self.lista.selection():
@@ -327,7 +359,8 @@ class App:
                     self.itens[iid].update(md=None, saida=None, erro=dado)
                     self.lista.set(iid, "status", "Erro")
                     self.lista.item(iid, tags=("erro",))
-                    self.progresso["value"] = self.progresso["value"] + 1
+                    self._feitos += 1
+                    self.progresso.configure(value=self._feitos)
                 elif tipo == "fim":
                     self.rodando = False
                     self.btn_converter.state(["!disabled"])
@@ -336,7 +369,10 @@ class App:
                     self.status.set(f"Terminado: {ok} convertido(s), {erros} com erro.")
         except queue.Empty:
             pass
-        self.root.after(100, self._processar_fila)
+        except Exception as exc:  # nunca deixar o laço da tela morrer
+            self.status.set(f"Erro interno: {exc}")
+        finally:
+            self.root.after(100, self._processar_fila)
 
     # ---------- prévia / ações ----------
     def _selecionado(self):

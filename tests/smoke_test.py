@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app import converter  # noqa: E402
 
 PDF = b"""%PDF-1.4
@@ -55,6 +56,11 @@ def main():
         print("Exemplos gerados em", d)
         return
 
+    # PDF de duas colunas com cabeçalho/rodapé (parecido com manual de impressora)
+    from gerar_pdf_manual import main as gerar_manual
+    gerar_manual(str(d / "manual.pdf"))
+    casos["manual.pdf"] = "## Configurações de papel"
+
     falhas = 0
     for nome, esperado in casos.items():
         try:
@@ -63,6 +69,18 @@ def main():
         except Exception as exc:  # noqa: BLE001
             md, ok = f"ERRO {exc}", False
         print(("OK   " if ok else "FALHA"), nome, "->", md.strip().splitlines()[:2])
+        falhas += not ok
+    # ordem das colunas e limpeza
+    md = converter(d / "manual.pdf")
+    checks = {
+        "colunas na ordem (4 antes de 5)": md.find("4 Na aba") < md.find("5 Selecione"),
+        "sem rodapé '- 2 -'": "- 2" not in md,
+        "sem cabeçalho repetido": "Registrando um tamanho de papel" not in md,
+        "tabela montada": "|Modo de corte|Trabalho|" in md,
+        "índice sem pontilhado": "— pág. 2" in md,
+    }
+    for nome, ok in checks.items():
+        print(("OK   " if ok else "FALHA"), nome)
         falhas += not ok
     sys.exit(1 if falhas else 0)
 

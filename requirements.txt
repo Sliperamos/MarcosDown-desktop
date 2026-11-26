@@ -1,3 +1,4 @@
 markitdown[pdf,docx,pptx,xlsx,xls,outlook]==0.1.9
 tkinterdnd2==0.4.3
+pymupdf4llm==2.2
 pyinstaller>=6.10
