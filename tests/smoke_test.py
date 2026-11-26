@@ -81,6 +81,16 @@ def main():
         "tabela montada": "|Modo de corte|Trabalho|" in md,
         "índice sem pontilhado": "— pág. 2" in md,
     }
+    # rodapé entre colunas não pode apagar a 1ª linha da coluna da direita
+    from limpeza import limpar_markdown
+    sim = []
+    for pg in range(10, 16):
+        sim += ["<u>Registrando um tamanho de papel</u>", "", "texto.", "", f"- {pg} -", "",
+                "Clique em [Start] e selecione [Control Panel]", "em [Windows System].", ""]
+    lm = limpar_markdown("\n".join(sim))
+    checks["linha após rodapé preservada"] = lm.count("Clique em [Start]") == 6
+    checks["cabeçalho sublinhado removido"] = "Registrando um tamanho" not in lm
+
     for nome, ok in checks.items():
         print(("OK   " if ok else "FALHA"), nome)
         falhas += not ok

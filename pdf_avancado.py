@@ -9,6 +9,24 @@ _lock = threading.Lock()
 _mod = None
 
 
+def _corrigir_marcadores():
+    """O PyMuPDF4LLM trata a letra "o" no começo da linha como marcador de lista
+    (por causa do ◦ em fontes antigas). Em português "o" é artigo: "o protocolo"
+    virava "- protocolo". Tira o "o" da lista de marcadores."""
+    from pymupdf4llm.helpers import utils
+
+    def sem_o(seq):
+        return tuple(b for b in seq if b != "o")
+
+    utils.BULLETS = sem_o(utils.BULLETS)
+    try:
+        from pymupdf4llm.helpers import document_layout
+
+        document_layout.BULLETS = sem_o(document_layout.BULLETS)
+    except Exception:
+        pass
+
+
 def _carregar():
     global _mod
     with _lock:
@@ -19,6 +37,7 @@ def _carregar():
                 pymupdf4llm.use_layout(False)
             except Exception:
                 pass
+            _corrigir_marcadores()
             _mod = pymupdf4llm
         return _mod
 

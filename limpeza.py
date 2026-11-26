@@ -21,6 +21,10 @@ RE_PONTILHADO = re.compile(r"\s*(?:\.\s?){4,}\s*(\d{1,4})\b\s*")
 RE_ESTRUTURA = re.compile(r"^\s*(?:#|\||>|```|[-*+]\s|\d+[.)]\s|!\[|<|---|\*\*\*)")
 RE_MARCADOR = re.compile(r"^\(?\d{1,3}[).]?$|^[•▪■□◎]$")
 RE_TITULO_NEGRITO = re.compile(r"^(#{1,6})\s+\*\*(.+?)\*\*\s*$")
+RE_NUM_PASSO = re.compile(r"^(?:#{1,6}\s*)?(?:\*\*)?\(?\d{1,3}[.)]?(?:\*\*)?$")
+RE_SUBLINHADO = re.compile(r"^\s*<u>(.+?)</u>\s*$")
+RE_NAO_JUNTA = re.compile(r"^\s*(?:#|\||>|```|!\[|<|---|\*\*\*)")
+RE_SUBPASSO = re.compile(r"^\(?\d{1,3}[.)]")
 FIM_FRASE = tuple(".!?:;")
 
 
@@ -39,14 +43,30 @@ def _remover_paginas_e_cabecalhos(linhas: list[str]) -> list[str]:
         return (5 <= len(t) <= 90 and t[:1].isalpha() and t[:1].isupper()
                 and not t.startswith("|") and not t.rstrip().endswith((".", ":", ",")))
 
+    def prox_texto(j):
+        for k in range(j + 1, min(j + 4, len(linhas))):
+            if linhas[k].strip():
+                return linhas[k].strip()
+        return ""
+
     def cabecalho_apos(i):
         for j in range(i + 1, min(i + 12, len(linhas))):
             t = linhas[j].strip()
             if RE_PAGINA.match(linhas[j]):
                 return None
-            if not t or len(t) <= 4:
+            if not t:
                 continue
-            return j if parece_titulo(t) else None
+            if RE_NUM_PASSO.match(t):
+                return None  # número de passo: o que vem depois é conteúdo, não cabeçalho
+            if len(t) <= 4:
+                continue  # resto de texto girado/figura
+            if not parece_titulo(t):
+                return None
+            # frase que continua na linha seguinte ("Clique em [Start] e" / "em [Windows System].")
+            # é começo de passo de outra coluna, não cabeçalho de página
+            if _comeca_continuacao(prox_texto(j)):
+                return None
+            return j
         return None
 
     candidatos = Counter()
@@ -71,6 +91,49 @@ def _remover_paginas_e_cabecalhos(linhas: list[str]) -> list[str]:
     return [l for i, l in enumerate(linhas) if i not in remover]
 
 
+def _normalizar(linhas: list[str]) -> list[str]:
+    # cabeçalhos de página vêm sublinhados (<u>Seção</u>) e se repetem: remove todos
+    sub = Counter(m.group(1).strip() for l in linhas if (m := RE_SUBLINHADO.match(l)))
+    repetidos = {t for t, n in sub.items() if n >= 3 and not t.endswith(".")}
+    saida = []
+    for l in linhas:
+        m = RE_SUBLINHADO.match(l)
+        if m and m.group(1).strip() in repetidos:
+            continue
+        # subtítulos destacados (**<mark>Título</mark>**) viram ###
+        l = re.sub(r"^\s*\*\*<mark>(.+?)</mark>\*\*\s*$", r"### \1", l)
+        l = re.sub(r"</?(?:u|mark)>", "", l)
+        l = l.replace("`•`", "•").replace("** **", " ")
+        if l.lstrip().startswith("|"):
+            l = re.sub(r"(?<=\|)Col\d+(?=\|)", "", l)          # cabeçalho sem nome
+            l = re.sub(r"\|(?:\s*<br>)+\s*", "|", l)             # <br> no início da célula
+            l = re.sub(r"\s*(?:<br>\s*)+\|", "|", l)             # <br> no fim da célula
+            l = re.sub(r"(?:<br>\s*){2,}", "<br>", l)
+        saida.append(l)
+    return saida
+
+
+def _hierarquia(linhas: list[str]) -> list[str]:
+    """# 1 + ## Título -> # 1. Título; títulos de seção ###### -> ##."""
+    saida, i = [], 0
+    while i < len(linhas):
+        l = linhas[i]
+        m = re.match(r"^#{1,6}\s+(\d{1,2})\s*$", l)
+        if m:
+            j = i + 1
+            while j < len(linhas) and not linhas[j].strip():
+                j += 1
+            mt = re.match(r"^#{1,6}\s+(.+)$", linhas[j]) if j < len(linhas) else None
+            if mt:
+                saida.append(f"# {m.group(1)}. {mt.group(1).strip()}")
+                i = j + 1
+                continue
+        l = re.sub(r"^#{4,6}\s+", "## ", l)
+        saida.append(l)
+        i += 1
+    return saida
+
+
 def _remover_texto_girado(linhas: list[str]) -> list[str]:
     saida, i, n = [], 0, len(linhas)
     while i < n:
@@ -91,6 +154,7 @@ def _pontilhados(linhas: list[str]) -> list[str]:
     saida = []
     for l in linhas:
         if RE_PONTILHADO.search(l) and not l.lstrip().startswith("|"):
+            l = l.replace("**", "")
             partes = RE_PONTILHADO.sub(lambda m: f" — pág. {m.group(1)}\n", l).rstrip("\n")
             saida.extend(p.strip() for p in partes.split("\n") if p.strip())
         else:
@@ -108,8 +172,16 @@ def _juntar_quebras(linhas: list[str]) -> list[str]:
     i = 0
     while i < len(linhas):
         atual = linhas[i].rstrip()
+        # número de passo sozinho ("**7**" / "7") + texto do passo na linha seguinte
+        num = RE_NUM_PASSO.match(atual.strip())
+        if (num and not atual.lstrip().startswith("#") and i + 1 < len(linhas)
+                and linhas[i + 1].strip() and not _estrutural(linhas[i + 1])
+                and linhas[i + 1].strip()[:1].isupper()):
+            atual = atual.strip().replace("*", "") + " " + linhas[i + 1].strip()
+            i += 1
         while True:
-            if not atual.strip() or _estrutural(atual) or atual.rstrip().endswith(FIM_FRASE):
+            if (not atual.strip() or RE_NAO_JUNTA.match(atual)
+                    or atual.rstrip().endswith(FIM_FRASE)):
                 break
             # próxima linha direta ou separada por UMA linha em branco
             j = i + 1
@@ -120,7 +192,8 @@ def _juntar_quebras(linhas: list[str]) -> list[str]:
             if j >= len(linhas):
                 break
             prox = linhas[j].strip()
-            if not prox or _estrutural(linhas[j]) or RE_MARCADOR.match(prox):
+            if (not prox or _estrutural(linhas[j]) or RE_MARCADOR.match(prox)
+                    or RE_SUBPASSO.match(prox)):
                 break
             if not _comeca_continuacao(prox):
                 break
@@ -164,7 +237,9 @@ def _final(linhas: list[str]) -> str:
 
 def limpar_markdown(md: str) -> str:
     linhas = md.replace("\r\n", "\n").replace(" ", " ").replace("\f", "\n").split("\n")
+    linhas = _normalizar(linhas)
     linhas = _remover_paginas_e_cabecalhos(linhas)
+    linhas = _hierarquia(linhas)
     linhas = _remover_texto_girado(linhas)
     linhas = _pontilhados(linhas)
     linhas = _juntar_quebras(linhas)
