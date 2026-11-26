@@ -106,6 +106,11 @@ def main():
     checks["tabela normal não é formulário"] = not pdf_avancado.parece_formulario(
         "|Item|Valor|Descrição|\n|---|---|---|\n|Modo|Trabalho|Corta no fim.|\n" * 12)
     from limpeza import limpar_markdown
+    # decisão judicial: itálico por linha, hífen e negrito quebrados
+    dj = limpar_markdown("_impetrado por João Vita Fragoso de_\n_Medeiros, referente ao ano-_\n_calendário 2005._\n\n**Ação Criminal nº 0012200-**\n**33.2016.4.05.8300.**\n\n**R E L A T Ó R I O**")
+    checks["decisão: itálico e linhas juntados"] = "Fragoso de Medeiros, referente ao ano-calendário 2005." in dj
+    checks["decisão: número de processo inteiro"] = "0012200-33.2016.4.05.8300" in dj
+    checks["decisão: título espaçado"] = "**RELATÓRIO**" in dj
     # tecla <OK> no início da linha continua a frase anterior
     lj = limpar_markdown("2. Pressione <8>, <9>, <1> e, em seguida, pressione o botão\n<OK>.")
     checks["junta <OK>"] = "pressione o botão <OK>." in lj

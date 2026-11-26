@@ -117,6 +117,38 @@ def _normalizar(linhas: list[str]) -> list[str]:
     return saida
 
 
+def _estilos(linhas: list[str]) -> list[str]:
+    """Tira marcas de estilo que só gastam tokens: itálico linha a linha
+    (_texto_), riscado falso (~~) de linhas de tabela, negrito picado, e
+    junta títulos com letras espaçadas ("R E L A T Ó R I O" -> "RELATÓRIO")."""
+    saida = []
+    for l in linhas:
+        if l.startswith("```"):
+            saida.append(l)
+            continue
+        if l.lstrip().startswith("|"):
+            celulas = l.split("|")
+            l = "|".join(re.sub(r"^_+|_+$", "", c.replace("~~", "").replace("_<br>_", "<br>").strip())
+                         for c in celulas)
+            saida.append(l)
+            continue
+        l = l.replace("~~", "")
+        l = l.replace("**_", "**").replace("_**", "**")
+        # itálico: _texto_ (sem mexer em nomes_com_sublinhado)
+        l = re.sub(r"(?<![\w*])_(?=\S)(.+?)(?<=\S)_(?![\w*])", r"\1", l)
+        l = re.sub(r"(?<![\w])_(?![\w])", "", l)          # "_" sobrando sozinho
+        l = re.sub(r"\*\*\s*\*\*", " ", l)                # "** **" entre trechos em negrito
+        l = re.sub(r"\*\*([.,;:)]+)\*\*", r"\1", l)
+        l = re.sub(r"\s+([.,;:])(?=\s|$)", r"\1", l) if l.strip() and not l.lstrip().startswith("|") else l
+        # título com letras espaçadas (linha inteira)
+        nucleo = l.strip().strip("*").strip()
+        if re.fullmatch(r"(?:[A-ZÀ-Ú] ){2,}[A-ZÀ-Ú]", nucleo):
+            junto = nucleo.replace(" ", "")
+            l = l.replace(nucleo, junto)
+        saida.append(re.sub(r"[ \t]{2,}", " ", l).rstrip() if not l.lstrip().startswith("|") else l)
+    return saida
+
+
 def _hierarquia(linhas: list[str]) -> list[str]:
     """# 1 + ## Título -> # 1. Título; títulos de seção ###### -> ##."""
     saida, i = [], 0
@@ -169,6 +201,9 @@ def _pontilhados(linhas: list[str]) -> list[str]:
 
 
 def _comeca_continuacao(t: str) -> bool:
+    if re.match(r"[.,;:)]", t):
+        return True
+    t = t.lstrip("*_ ")
     c = t[:1]
     return bool(c) and (c.islower() or c in "[(," or bool(re.match(r"<[A-Z0-9][A-Z0-9 /+.-]*>", t)))
 
@@ -202,10 +237,20 @@ def _juntar_quebras(linhas: list[str]) -> list[str]:
                     or RE_SUBPASSO.match(prox) or prox.startswith("[pág.")
                     or prox.startswith(("[imagem", "[texto", "[página"))):
                 break
-            if not _comeca_continuacao(prox):
+            conectivo = re.search(r"\b(de|da|do|das|dos|e|em|no|na|nos|nas|por|para|com|ao|aos|à|às|que|o|a|os|as|pelo|pela|sob|sobre|entre|contra|nº|n\.º)\**$",
+                                  atual, re.IGNORECASE)
+            negrito_continua = (atual.endswith("**") and prox.startswith("**")
+                                and not atual[:-2].rstrip().endswith(FIM_FRASE))
+            if not (_comeca_continuacao(prox) or conectivo or negrito_continua):
                 break
-            if re.search(r"[a-zà-ú]-$", atual) and prox[:1].islower():
-                atual = atual[:-1] + prox  # hifenização: "dispo-" + "sitivo"
+            if atual.endswith("**") and prox.startswith("**"):
+                base = atual[:-2].rstrip()
+                sep = "" if base.endswith("-") else " "  # "0012200-" + "33.2016..." sem espaço
+                atual = base + sep + prox[2:]  # **trecho** **continua** -> um só negrito
+            elif re.search(r"[A-Za-zÀ-ú]-$", atual) and prox[:1].islower():
+                atual = atual + prox  # "ano-" + "calendário": mantém o hífen (comum em português)
+            elif re.match(r"[.,;:)]", prox):
+                atual = atual + prox  # pontuação que ficou sozinha na linha seguinte
             else:
                 atual = atual + " " + prox
             i = j
@@ -245,6 +290,7 @@ def _final(linhas: list[str]) -> str:
 def limpar_markdown(md: str) -> str:
     linhas = md.replace("\r\n", "\n").replace(" ", " ").replace("\f", "\n").split("\n")
     linhas = _normalizar(linhas)
+    linhas = _estilos(linhas)
     linhas = _remover_paginas_e_cabecalhos(linhas)
     linhas = _hierarquia(linhas)
     linhas = _remover_texto_girado(linhas)

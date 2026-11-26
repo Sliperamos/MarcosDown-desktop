@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - sem arrastar e soltar
     DND_OK = False
 
 APP_NAME = "MarcosDown"
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 
 EXTENSOES = {
     ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".json", ".xml",
