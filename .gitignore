@@ -1,0 +1,7 @@
+build/
+dist/
+Output/
+amostras/
+__pycache__/
+*.pyc
+autoteste.txt

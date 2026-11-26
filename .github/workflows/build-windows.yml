@@ -1,0 +1,79 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Testar conversão
+        run: python tests/smoke_test.py
+
+      - name: Compilar com PyInstaller
+        run: pyinstaller marcosdown.spec --noconfirm --clean
+
+      - name: Testar o executável compilado
+        shell: pwsh
+        run: |
+          python tests/smoke_test.py amostras
+          $arqs = (Get-ChildItem amostras -File).FullName
+          $t = Start-Process -FilePath "dist\MarcosDown\MarcosDown.exe" -ArgumentList (@("--autoteste", "autoteste.txt") + $arqs) -Wait -PassThru
+          Get-Content autoteste.txt
+          if ($t.ExitCode -ne 0) { Write-Error "Conversão falhou no executável"; exit 1 }
+          $p = Start-Process -FilePath "dist\MarcosDown\MarcosDown.exe" -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { Write-Error "O app fechou sozinho (código $($p.ExitCode))"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "App abriu normalmente."
+
+      - name: Versão
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "v=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT; else echo "v=1.0.0" >> $GITHUB_OUTPUT; fi
+
+      - name: Criar instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.v }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Versão portátil (zip)
+        shell: pwsh
+        run: Compress-Archive -Path dist\MarcosDown\* -DestinationPath Output\MarcosDown-portatil.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarcosDown-Windows
+          path: |
+            Output/*.exe
+            Output/*.zip
+
+      - name: Publicar release (quando for tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Output/*.exe
+            Output/*.zip
