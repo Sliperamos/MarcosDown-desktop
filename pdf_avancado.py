@@ -48,19 +48,25 @@ def pdf_para_markdown(caminho: str) -> str:
     return pdf_para_markdown_detalhado(caminho, usar_ocr=False)[0]
 
 
-COBERTURA_MIN = 0.9
+COBERTURA_MIN = 0.95
 
 
-def _palavras(texto: str) -> set[str]:
-    return {w.lower() for w in re.findall(r"[A-Za-zÀ-ú]{4,}", texto or "")}
+def _contagem(texto: str):
+    from collections import Counter
+
+    return Counter(w.lower() for w in re.findall(r"[A-Za-zÀ-ú]{3,}|\d+", texto or ""))
 
 
 def cobertura(pagina, md: str) -> float:
-    """Fração das palavras da página que aparecem no Markdown gerado."""
-    nat = _palavras(pagina.get_text())
-    if len(nat) < 15:
+    """Fração das palavras da página (contando repetições) presentes no Markdown.
+    Contar repetições pega a perda de uma linha como "2 Pressione ... o botão",
+    cujas palavras também aparecem em outras linhas da página."""
+    nat = _contagem(pagina.get_text())
+    total = sum(nat.values())
+    if total < 30:
         return 1.0
-    return len(nat & _palavras(md)) / len(nat)
+    gerado = _contagem(md)
+    return sum(min(n, gerado[w]) for w, n in nat.items()) / total
 
 
 def texto_por_colunas(pagina) -> str:
