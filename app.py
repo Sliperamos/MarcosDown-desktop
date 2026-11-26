@@ -22,12 +22,13 @@ except Exception:  # pragma: no cover - sem arrastar e soltar
     DND_OK = False
 
 APP_NAME = "MarcosDown"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 
 EXTENSOES = {
     ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".json", ".xml",
     ".html", ".htm", ".txt", ".md", ".epub", ".zip", ".msg", ".ipynb",
     ".jpg", ".jpeg", ".png", ".rss", ".atom",
+    ".tif", ".tiff", ".bmp", ".webp", ".gif", ".jfif",
 }
 
 _md = None
@@ -45,28 +46,92 @@ def get_markitdown():
         return _md
 
 
-def converter(caminho: Path, pdf_avancado: bool = True, limpar: bool = True) -> str:
-    """Converte um arquivo. Para PDF usa o leitor avançado (com volta automática
-    para o MarkItDown se falhar) e aplica a limpeza de cabeçalhos/rodapés."""
-    caminho = Path(caminho)
-    eh_pdf = caminho.suffix.lower() == ".pdf"
-    md = None
-    if eh_pdf and pdf_avancado:
-        try:
-            from pdf_avancado import pdf_para_markdown
+TIPOS = {".pdf": "PDF", ".docx": "Word", ".pptx": "PowerPoint", ".xlsx": "Excel", ".xls": "Excel",
+         ".csv": "CSV", ".html": "HTML", ".htm": "HTML", ".msg": "E-mail (Outlook)", ".epub": "EPUB",
+         ".zip": "ZIP", ".txt": "Texto", ".json": "JSON", ".xml": "XML"}
 
-            md = pdf_para_markdown(str(caminho))
-            if not md.strip():
-                md = None  # PDF escaneado/sem texto: tenta o MarkItDown
-        except Exception:
+
+def converter(caminho: Path, pdf_avancado: bool = True, limpar: bool = True,
+              usar_ocr: bool = True, cabecalho: bool = False) -> str:
+    return converter_detalhado(caminho, pdf_avancado, limpar, usar_ocr, cabecalho)[0]
+
+
+def converter_detalhado(caminho: Path, pdf_avancado: bool = True, limpar: bool = True,
+                        usar_ocr: bool = True, cabecalho: bool = True) -> tuple[str, dict]:
+    """Converte um arquivo e devolve (markdown, info).
+
+    - PDF: leitor avançado página a página com [pág. N]; OCR em páginas
+      escaneadas e em imagens grandes; volta para o MarkItDown se falhar.
+    - Imagens: OCR (português + inglês).
+    - Demais formatos: MarkItDown.
+    """
+    import ocr
+
+    caminho = Path(caminho)
+    ext = caminho.suffix.lower()
+    info = {"tipo": TIPOS.get(ext, ext.lstrip(".").upper()), "avisos": [], "ocr": "não"}
+    md = None
+
+    if ext == ".pdf" and pdf_avancado:
+        try:
+            from pdf_avancado import pdf_para_markdown_detalhado
+
+            md, det = pdf_para_markdown_detalhado(str(caminho), usar_ocr=usar_ocr)
+            info["paginas"] = det["paginas"]
+            info["avisos"] += det["avisos"]
+            if det["ocr_paginas"]:
+                pags = det["ocr_paginas"]
+                info["ocr"] = ("todas as páginas" if len(pags) == det["paginas"]
+                               else "págs. " + ", ".join(map(str, pags)))
+            if det["imagens_lidas"]:
+                info["imagens_com_texto"] = det["imagens_lidas"]
+            if ocr.qtd_letras(md) < 20:
+                info["avisos"].append("nenhum texto encontrado")
+        except Exception as exc:
+            if "senha" in str(exc):
+                raise
+            info["avisos"].append(f"leitor avançado falhou ({type(exc).__name__}); usado o simples")
             md = None
+    elif ext in ocr.EXT_IMAGEM:
+        info["tipo"] = "Imagem"
+        if usar_ocr and ocr.ocr_disponivel():
+            texto, quadros = ocr.ocr_arquivo_imagem(str(caminho))
+            if quadros > 1:
+                info["paginas"] = quadros
+            if ocr.qtd_letras(texto) >= 10:
+                md = "[texto obtido por OCR — conferir nomes e números]\n\n" + texto
+                info["ocr"] = "sim"
+                info["avisos"].append("texto de OCR pode ter erros em nomes e números")
+            else:
+                md = "[imagem sem texto legível]"
+                info["avisos"].append("imagem sem texto legível")
+
     if md is None:
         md = get_markitdown().convert(str(caminho)).text_content or ""
-    if eh_pdf and limpar:
+    if ext == ".pdf" and limpar:
         from limpeza import limpar_markdown
 
         md = limpar_markdown(md)
-    return md
+    if cabecalho:
+        md = montar_cabecalho(caminho, info) + md
+    return md, info
+
+
+def montar_cabecalho(caminho: Path, info: dict) -> str:
+    """Bloco de dados no topo do .md: ajuda a IA a saber de onde veio cada trecho."""
+    from datetime import datetime
+
+    linhas = ["---", f"arquivo: {caminho.name}", f"tipo: {info['tipo']}"]
+    if info.get("paginas"):
+        linhas.append(f"paginas: {info['paginas']}")
+    linhas.append(f"ocr: {info['ocr']}")
+    if info.get("imagens_com_texto"):
+        linhas.append(f"imagens_com_texto: {info['imagens_com_texto']}")
+    if info["avisos"]:
+        linhas.append("avisos: " + "; ".join(dict.fromkeys(info["avisos"])))
+    linhas.append(f"convertido_em: {datetime.now():%Y-%m-%d %H:%M} (MarcosDown {APP_VERSION})")
+    linhas.append("---")
+    return "\n".join(linhas) + "\n\n"
 
 
 def abrir_no_sistema(caminho: Path) -> None:
@@ -89,8 +154,8 @@ class App:
         self.rodando = False
 
         root.title(APP_NAME)
-        root.geometry("1100x740")
-        root.minsize(820, 600)
+        root.geometry("1100x800")
+        root.minsize(820, 660)
         self._icone()
         self._estilo()
         self._montar()
@@ -151,7 +216,7 @@ class App:
         self.lista.heading("arquivo", text="Arquivo")
         self.lista.heading("status", text="Status")
         self.lista.column("arquivo", width=330)
-        self.lista.column("status", width=110, anchor="center")
+        self.lista.column("status", width=130, anchor="center")
         sb = ttk.Scrollbar(lista_fr, orient="vertical", command=self.lista.yview)
         self.lista.configure(yscrollcommand=sb.set)
         self.lista.pack(side="left", fill="both", expand=True)
@@ -185,7 +250,7 @@ class App:
         ttk.Checkbutton(opc, text="Só converter (não salvar arquivo, apenas pré-visualizar)",
                         variable=self.nao_salvar).pack(anchor="w", pady=(4, 0))
 
-        pdf = ttk.LabelFrame(esq, text="PDF", padding=8)
+        pdf = ttk.LabelFrame(esq, text="PDF, imagens e IA", padding=8)
         pdf.pack(fill="x", pady=(8, 0))
         self.pdf_avancado = tk.BooleanVar(value=True)
         ttk.Checkbutton(pdf, text="Leitor avançado (colunas na ordem, títulos e tabelas)",
@@ -193,6 +258,12 @@ class App:
         self.limpar_pdf = tk.BooleanVar(value=True)
         ttk.Checkbutton(pdf, text="Limpar texto (rodapés, cabeçalhos, frases quebradas)",
                         variable=self.limpar_pdf).pack(anchor="w")
+        self.usar_ocr = tk.BooleanVar(value=True)
+        ttk.Checkbutton(pdf, text="OCR: ler escaneados, fotos e imagens (português)",
+                        variable=self.usar_ocr).pack(anchor="w")
+        self.cabecalho = tk.BooleanVar(value=True)
+        ttk.Checkbutton(pdf, text="Cabeçalho com dados do arquivo (para IA)",
+                        variable=self.cabecalho).pack(anchor="w")
 
         acao = ttk.Frame(esq)
         acao.pack(fill="x", pady=(8, 0))
@@ -315,7 +386,8 @@ class App:
         for iid in pendentes:
             self.lista.set(iid, "status", "Na fila")
             self.lista.item(iid, tags=())
-        opcoes = {"pdf_avancado": self.pdf_avancado.get(), "limpar": self.limpar_pdf.get()}
+        opcoes = {"pdf_avancado": self.pdf_avancado.get(), "limpar": self.limpar_pdf.get(),
+                  "usar_ocr": self.usar_ocr.get(), "cabecalho": self.cabecalho.get()}
         threading.Thread(target=self._worker,
                          args=(trabalho, destino, self.nao_salvar.get(), opcoes),
                          daemon=True).start()
@@ -324,7 +396,7 @@ class App:
         for iid, path in trabalho:
             self.fila.put(("inicio", iid, None))
             try:
-                md = converter(path, **opcoes)
+                md, info = converter_detalhado(path, **opcoes)
                 saida = None
                 if not nao_salvar:
                     pasta = destino or path.parent
@@ -332,7 +404,7 @@ class App:
                     if saida.resolve() == path.resolve():
                         saida = pasta / (path.stem + ".convertido.md")
                     saida.write_text(md, encoding="utf-8")
-                self.fila.put(("ok", iid, (md, saida)))
+                self.fila.put(("ok", iid, (md, saida, info)))
             except Exception as exc:
                 self.fila.put(("erro", iid, f"{type(exc).__name__}: {exc}"))
         self.fila.put(("fim", None, None))
@@ -345,9 +417,15 @@ class App:
                     self.lista.set(iid, "status", "Convertendo...")
                     self.status.set(f"Convertendo {self.itens[iid]['path'].name}...")
                 elif tipo == "ok" and iid in self.itens:
-                    md, saida = dado
+                    md, saida, info = dado
                     self.itens[iid].update(md=md, saida=saida, erro=None)
-                    self.lista.set(iid, "status", "Concluído")
+                    rotulo = "Concluído"
+                    if info.get("ocr", "não") != "não":
+                        rotulo += " · OCR"
+                    if any("nenhum texto" in a or "sem texto" in a or "falhou" in a
+                           for a in info.get("avisos", [])):
+                        rotulo = "Atenção"
+                    self.lista.set(iid, "status", rotulo)
                     self.lista.item(iid, tags=("ok",))
                     self._feitos += 1
                     self.progresso.configure(value=self._feitos)
@@ -440,6 +518,8 @@ def autoteste(saida: str, arquivos: list[str]) -> int:
             md = converter(Path(a))
             if Path(a).name == "manual.pdf" and "## Configurações de papel" not in md:
                 raise RuntimeError("leitor de PDF avançado não funcionou no executável")
+            if Path(a).stem.startswith("scan") and "PROCURA" not in md:
+                raise RuntimeError("OCR não funcionou no executável")
             linhas.append(f"### {a}\n{md}")
         except Exception as exc:
             erros += 1

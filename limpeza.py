@@ -24,6 +24,7 @@ RE_TITULO_NEGRITO = re.compile(r"^(#{1,6})\s+\*\*(.+?)\*\*\s*$")
 RE_NUM_PASSO = re.compile(r"^(?:#{1,6}\s*)?(?:\*\*)?\(?\d{1,3}[.)]?(?:\*\*)?$")
 RE_SUBLINHADO = re.compile(r"^\s*<u>(.+?)</u>\s*$")
 RE_NAO_JUNTA = re.compile(r"^\s*(?:#|\||>|```|!\[|<|---|\*\*\*)")
+RE_MARCA_PAG = re.compile(r"^\[pág\. \d+\]$")
 RE_SUBPASSO = re.compile(r"^\(?\d{1,3}[.)]")
 FIM_FRASE = tuple(".!?:;")
 
@@ -33,7 +34,9 @@ def _estrutural(linha: str) -> bool:
 
 
 def _remover_paginas_e_cabecalhos(linhas: list[str]) -> list[str]:
-    paginas = [i for i, l in enumerate(linhas) if RE_PAGINA.match(l)]
+    rodapes = [i for i, l in enumerate(linhas) if RE_PAGINA.match(l)]
+    marcas = [i for i, l in enumerate(linhas) if RE_MARCA_PAG.match(l.strip())]
+    paginas = sorted(set(rodapes) | set(marcas))  # quebras de página
     if not paginas:
         return linhas
 
@@ -52,7 +55,7 @@ def _remover_paginas_e_cabecalhos(linhas: list[str]) -> list[str]:
     def cabecalho_apos(i):
         for j in range(i + 1, min(i + 12, len(linhas))):
             t = linhas[j].strip()
-            if RE_PAGINA.match(linhas[j]):
+            if RE_PAGINA.match(linhas[j]) or RE_MARCA_PAG.match(t):
                 return None
             if not t:
                 continue
@@ -79,7 +82,7 @@ def _remover_paginas_e_cabecalhos(linhas: list[str]) -> list[str]:
             pos_cand.setdefault(t, []).append(j)
 
     minimo = 3 if len(paginas) >= 6 else 2
-    remover = set(paginas)
+    remover = set(rodapes)  # o marcador [pág. N] fica
     for t, n in candidatos.items():
         if n >= minimo:
             remover.update(pos_cand[t])
@@ -180,7 +183,7 @@ def _juntar_quebras(linhas: list[str]) -> list[str]:
             atual = atual.strip().replace("*", "") + " " + linhas[i + 1].strip()
             i += 1
         while True:
-            if (not atual.strip() or RE_NAO_JUNTA.match(atual)
+            if (not atual.strip() or RE_NAO_JUNTA.match(atual) or RE_MARCA_PAG.match(atual.strip())
                     or atual.rstrip().endswith(FIM_FRASE)):
                 break
             # próxima linha direta ou separada por UMA linha em branco
@@ -193,7 +196,8 @@ def _juntar_quebras(linhas: list[str]) -> list[str]:
                 break
             prox = linhas[j].strip()
             if (not prox or _estrutural(linhas[j]) or RE_MARCADOR.match(prox)
-                    or RE_SUBPASSO.match(prox)):
+                    or RE_SUBPASSO.match(prox) or prox.startswith("[pág.")
+                    or prox.startswith(("[imagem", "[texto", "[página"))):
                 break
             if not _comeca_continuacao(prox):
                 break
@@ -228,7 +232,7 @@ def _final(linhas: list[str]) -> str:
             continue
         vazias = 0
         t = l.strip()
-        if t == anterior and not _estrutural(l):
+        if t == anterior and not _estrutural(l) and not t.startswith("["):
             continue  # linha duplicada em sequência ("Índice" / "Índice")
         anterior = t
         saida.append(l.rstrip())

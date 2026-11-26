@@ -2,7 +2,8 @@
 # Build: pyinstaller marcosdown.spec --noconfirm
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
-datas = [("assets/icon.png", "assets")]
+datas = [("assets/icon.png", "assets"), ("tessdata/por.traineddata", "tessdata"),
+         ("tessdata/eng.traineddata", "tessdata")]
 binaries = []
 hiddenimports = []
 
@@ -18,7 +19,7 @@ for pkg in ("markitdown", "magika", "tkinterdnd2", "pdfminer", "mammoth",
     except Exception:
         pass
 
-hiddenimports += ["limpeza", "pdf_avancado"]
+hiddenimports += ["limpeza", "pdf_avancado", "ocr"]
 hiddenimports += collect_submodules(
     "onnxruntime", filter=lambda n: ".quantization" not in n and ".tools" not in n
     and ".transformers" not in n and ".backend" not in n)

@@ -89,3 +89,23 @@ def main(saida: str):
 
 if __name__ == "__main__":
     main(sys.argv[1] if len(sys.argv) > 1 else "manual_teste.pdf")
+
+
+def gerar_scans(pasta: str):
+    """Página 'escaneada' (só imagem) em PDF e PNG, para testar o OCR."""
+    from pathlib import Path
+    pasta = Path(pasta)
+    d = pymupdf.open()
+    p = d.new_page(width=595, height=842)
+    y = 90
+    for t in ["PROCURAÇÃO AD JUDICIA", "OUTORGANTE: João da Silva, CPF 123.456.789-00",
+              "OUTORGADO: Dr. Antônio Pereira, OAB/SP 98.765",
+              "PODERES: para o foro em geral, podendo propor ações e recorrer."]:
+        p.insert_text((60, y), t, fontsize=13, fontname="helv")
+        y += 30
+    pix = p.get_pixmap(dpi=200)
+    pix.save(str(pasta / "scan.png"))
+    so_imagem = pymupdf.open()
+    pg = so_imagem.new_page(width=595, height=842)
+    pg.insert_image(pg.rect, pixmap=pix)
+    so_imagem.save(str(pasta / "scan.pdf"))

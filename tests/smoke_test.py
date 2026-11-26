@@ -53,8 +53,9 @@ def main():
     casos["a.pptx"] = "Slide Teste"
 
     if len(sys.argv) > 1:
-        from gerar_pdf_manual import main as gerar_manual
+        from gerar_pdf_manual import main as gerar_manual, gerar_scans
         gerar_manual(str(d / "manual.pdf"))
+        gerar_scans(str(d))
         print("Exemplos gerados em", d)
         return
 
@@ -81,6 +82,12 @@ def main():
         "tabela montada": "|Modo de corte|Trabalho|" in md,
         "índice sem pontilhado": "— pág. 2" in md,
     }
+    # OCR: PDF escaneado e imagem
+    from gerar_pdf_manual import gerar_scans
+    gerar_scans(str(d))
+    for nome in ("scan.pdf", "scan.png"):
+        t = converter(d / nome)
+        checks[f"OCR em {nome}"] = "PROCURA" in t and "98.765" in t
     # rodapé entre colunas não pode apagar a 1ª linha da coluna da direita
     from limpeza import limpar_markdown
     sim = []

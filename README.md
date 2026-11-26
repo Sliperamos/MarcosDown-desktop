@@ -2,6 +2,8 @@
 
 App para Windows que converte arquivos para Markdown usando o [Microsoft MarkItDown](https://github.com/microsoft/markitdown).
 
+**Feito para preparar lotes de arquivos para IAs** (Claude, ChatGPT etc.): texto limpo, com página e origem marcadas, gasta menos tokens e é lido mais rápido.
+
 **Formatos:** PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, CSV, JSON, XML, EPUB, ZIP, e-mails do Outlook (.msg), Jupyter (.ipynb) e imagens (só os metadados).
 
 ## Como usar
@@ -24,6 +26,20 @@ As duas opções podem ser desligadas na seção **PDF** da janela. Se o leitor 
 (PDF escaneado, por exemplo), o app volta sozinho para o MarkItDown.
 
 > Imagens e ilustrações não são convertidas: o resultado é só o texto.
+
+## OCR (escaneados, fotos e imagens)
+Feito 100% no PC, sem internet (bom para documentos sigilosos). Usa o Tesseract que já vem no PyMuPDF,
+com os idiomas português e inglês da pasta `tessdata/`.
+- **PDF escaneado:** página sem texto passa pelo OCR inteira.
+- **Imagem dentro de PDF** (documento digitalizado anexado, print): o texto achado entra como citação
+  `> [texto na imagem — OCR]`. Imagem sem texto vira `[imagem]`.
+- **Fotos e imagens soltas** (JPG, PNG, TIFF com várias páginas, BMP, WebP, GIF): viram texto.
+- Todo texto de OCR sai marcado com *"conferir nomes e números"*.
+
+## Pensado para IA
+- `[pág. N]` no início de cada página do PDF, para a IA poder citar a página.
+- Cabeçalho no topo de cada `.md` com arquivo de origem, tipo, páginas, onde houve OCR e avisos.
+- Na lista, o status mostra **Concluído · OCR** ou **Atenção** (arquivo sem texto, leitor falhou etc.).
 
 ## Como gerar o instalador
 O GitHub Actions compila sozinho a cada envio para a branch `main`:
