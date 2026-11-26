@@ -53,6 +53,8 @@ def main():
     casos["a.pptx"] = "Slide Teste"
 
     if len(sys.argv) > 1:
+        from gerar_pdf_manual import main as gerar_manual
+        gerar_manual(str(d / "manual.pdf"))
         print("Exemplos gerados em", d)
         return
 

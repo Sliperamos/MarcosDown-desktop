@@ -437,7 +437,10 @@ def autoteste(saida: str, arquivos: list[str]) -> int:
     linhas, erros = [], 0
     for a in arquivos:
         try:
-            linhas.append(f"### {a}\n{converter(Path(a))}")
+            md = converter(Path(a))
+            if Path(a).name == "manual.pdf" and "## Configurações de papel" not in md:
+                raise RuntimeError("leitor de PDF avançado não funcionou no executável")
+            linhas.append(f"### {a}\n{md}")
         except Exception as exc:
             erros += 1
             linhas.append(f"### {a}\nERRO {type(exc).__name__}: {exc}")
