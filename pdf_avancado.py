@@ -69,6 +69,48 @@ def cobertura(pagina, md: str) -> float:
     return sum(min(n, gerado[w]) for w, n in nat.items()) / total
 
 
+def parece_formulario(md: str) -> bool:
+    """Formulários (guias TISS, fichas) viram tabelas enormes onde cada campo é
+    repetido em todas as colunas que ocupa. Detecta pela proporção de células
+    repetidas em sequência."""
+    total = repetidas = 0
+    for linha in md.splitlines():
+        if not linha.startswith("|") or linha.startswith("|---"):
+            continue
+        celulas = [c.strip() for c in linha.strip().strip("|").split("|")]
+        for a, b in zip(celulas, celulas[1:]):
+            total += 1
+            repetidas += bool(b) and a == b
+    return total >= 30 and repetidas / total > 0.35
+
+
+def texto_por_linhas(pagina, tolerancia: float = 4.0) -> str:
+    """Reconstrói o texto linha a linha pela posição na página (bom para
+    formulários): palavras na mesma altura viram uma linha; espaço grande
+    entre elas vira " | " (campos diferentes)."""
+    palavras = sorted(pagina.get_text("words"), key=lambda w: ((w[1] + w[3]) / 2, w[0]))
+    linhas, atual, y_ref = [], [], None
+    for w in palavras:
+        yc = (w[1] + w[3]) / 2
+        if y_ref is None or yc - y_ref <= tolerancia:
+            atual.append(w)
+            y_ref = yc if y_ref is None else y_ref
+        else:
+            linhas.append(atual)
+            atual, y_ref = [w], yc
+    if atual:
+        linhas.append(atual)
+    saida = []
+    for ln in linhas:
+        ln.sort(key=lambda w: w[0])
+        partes = [ln[0][4]]
+        for ant, w in zip(ln, ln[1:]):
+            altura = max(1.0, w[3] - w[1])
+            partes.append((" | " if w[0] - ant[2] > altura * 1.5 else " ") + w[4])
+        saida.append("".join(partes))
+    return "\n".join(saida)
+
+
 def texto_por_colunas(pagina) -> str:
     """Texto da página em ordem de leitura de 1 ou 2 colunas, sem perder nada.
     Reconhece títulos pelo tamanho da fonte e transforma "•" em lista."""
@@ -159,7 +201,10 @@ def pdf_para_markdown_detalhado(caminho: str, usar_ocr: bool = True,
 
         # rede de segurança: se o leitor avançado perdeu texto desta página,
         # refaz a página lendo coluna por coluna (não perde texto)
-        if nativo >= LETRAS_PAGINA_VAZIA and cobertura(pagina, md) < COBERTURA_MIN:
+        if nativo >= LETRAS_PAGINA_VAZIA and parece_formulario(md):
+            md = texto_por_linhas(pagina)
+            info.setdefault("paginas_formulario", []).append(i + 1)
+        elif nativo >= LETRAS_PAGINA_VAZIA and cobertura(pagina, md) < COBERTURA_MIN:
             md = texto_por_colunas(pagina)
             info["paginas_refeitas"].append(i + 1)
 

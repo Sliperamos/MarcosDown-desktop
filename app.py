@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - sem arrastar e soltar
     DND_OK = False
 
 APP_NAME = "MarcosDown"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
 EXTENSOES = {
     ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".json", ".xml",
@@ -83,6 +83,8 @@ def converter_detalhado(caminho: Path, pdf_avancado: bool = True, limpar: bool =
                 pags = det["ocr_paginas"]
                 info["ocr"] = ("todas as páginas" if len(pags) == det["paginas"]
                                else "págs. " + ", ".join(map(str, pags)))
+            if det.get("paginas_formulario"):
+                info["formulario"] = "págs. " + ", ".join(map(str, det["paginas_formulario"]))
             if det["imagens_lidas"]:
                 info["imagens_com_texto"] = det["imagens_lidas"]
             if ocr.qtd_letras(md) < 20:
@@ -125,6 +127,8 @@ def montar_cabecalho(caminho: Path, info: dict) -> str:
     if info.get("paginas"):
         linhas.append(f"paginas: {info['paginas']}")
     linhas.append(f"ocr: {info['ocr']}")
+    if info.get("formulario"):
+        linhas.append(f"formulario: {info['formulario']} (lido linha a linha: rótulos e, abaixo, os valores)")
     if info.get("imagens_com_texto"):
         linhas.append(f"imagens_com_texto: {info['imagens_com_texto']}")
     if info["avisos"]:

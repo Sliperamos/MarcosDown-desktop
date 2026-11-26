@@ -99,6 +99,12 @@ def main():
     pg = pymupdf.open(d / "manual.pdf")[1]
     checks["cobertura detecta perda"] = pdf_avancado.cobertura(pg, "Configurações de papel") < 0.9
     checks["texto por colunas completo"] = pdf_avancado.cobertura(pg, pdf_avancado.texto_por_colunas(pg)) >= 0.99
+    # formulário (guia TISS): tabela com campos repetidos em todas as colunas
+    linha_rep = "|" + "|".join(["10-Nome<br>FULANO"] * 20) + "|"
+    form_md = "\n".join(["|" + "|".join(["Dados do Beneficiário"] * 20) + "|", "|---" * 20 + "|", linha_rep, linha_rep])
+    checks["detecta formulário"] = pdf_avancado.parece_formulario(form_md)
+    checks["tabela normal não é formulário"] = not pdf_avancado.parece_formulario(
+        "|Item|Valor|Descrição|\n|---|---|---|\n|Modo|Trabalho|Corta no fim.|\n" * 12)
     from limpeza import limpar_markdown
     # tecla <OK> no início da linha continua a frase anterior
     lj = limpar_markdown("2. Pressione <8>, <9>, <1> e, em seguida, pressione o botão\n<OK>.")

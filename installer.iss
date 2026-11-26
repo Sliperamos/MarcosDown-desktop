@@ -1,7 +1,7 @@
 ; Instalador Inno Setup do MarcosDown
 #define AppName "MarcosDown"
 #ifndef AppVersion
-  #define AppVersion "1.2.3"
+  #define AppVersion "1.2.4"
 #endif
 
 [Setup]
